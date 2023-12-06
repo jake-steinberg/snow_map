@@ -1,40 +1,41 @@
-let map;
-let pointLayer;
+//declare geoJSON variable to push features into.
 let geoJson = {
     type: "FeatureCollection",
     name: "nwsStations",
     features: []
 };
+maxArray = []
+const MAXVAL = Math.max(maxArray)
 
-function createMap(){
-    //create basemap
-    map = L.map('map', {
-        center: [46.15, -95.196],
+//mapbox access token.
+const token = "pk.eyJ1Ijoic3RhcnRyaWJ1bmUiLCJhIjoiY2xiNWF4OHFoMDRzczNybzEyMXFteTZ1YiJ9.WGjxTW63c5_XCbtZ5f8Yyw";
+
+//create the map.
+const map = new mapboxgl.Map({
+        //create basemap
+        container: 'map',
+        style: 'mapbox://styles/startribune/ck1b7427307bv1dsaq4f8aa5h',
+        center: [-95.196, 46.15],
         zoom: 7,
-        scrollWheelZoom: true,
+        scrollZoom: true,
+        accessToken: token
     });
 
-    L.mapbox.accessToken = 'pk.eyJ1Ijoic3RhcnRyaWJ1bmUiLCJhIjoiY2sxYjRnNjdqMGtjOTNjcGY1cHJmZDBoMiJ9.St9lE8qlWR5jIjkPYd3Wqw'
-
-    L.tileLayer('https://api.mapbox://styles/startribune/clcgjfkha001c15t7txvk5isf/tiles/{z}/{x}/{y}?access_token=' + L.mapbox.accessToken, {
-        tileSize: 512,
-        zoomOffset: -1,
-        attribution: '© <a href="https://www.mapbox.com/contribute/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    }).addTo(map);
-
-    getData();
-};
-
-
-async function getData() {
+//converts statewide_snow.json into a geojson.
+async function getData(){
     try {
         const response = await fetch('./data/statewide_snow.json');
-        const snowData = await response.json();
-        for (let point of snowData) {
+        const data = await response.json();
+        for (let point of data) {
             let coordinate = [(!isNaN(point.lon)) ? parseFloat(point.lon) : 0, (!isNaN(point.lat)) ? parseFloat(point.lat) : 0];
+            let total_snowfall = parseFloat(point.current_total_snowfall);
             let properties = point;
             delete properties.lon;
             delete properties.lat;
+            delete properties.current_total_snowfall;
+            properties.total_snowfall = total_snowfall;
+            maxArray.push(total_snowfall);
+            console.log(maxArray);
             let feature = {
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": coordinate},
@@ -42,13 +43,95 @@ async function getData() {
             };
             geoJson.features.push(feature);
         }
-        // Replace with actual function to add data to the map
-        // e.g., L.geoJson(geoJson).addTo(map);
-        console.log(geoJson);
-        L.geoJson(geoJson).addTo(map)
     } catch (error) {
         console.error('Error fetching or processing data:', error);
     }
 }
 
-document.addEventListener('DOMContentLoaded',createMap);
+//adds NWS points to map.
+map.on('load',  () => {
+    console.log(geoJson)
+    // Add GeoJSON source
+    map.addSource("NWS-stations", {
+        type: "geojson",
+        data: geoJson
+    });
+    // Add a symbol layer for labels
+    map.addLayer({
+        'id': 'station-labels',
+        'type': 'symbol',
+        'source': 'NWS-stations',
+        'layout': {
+            'text-field': ['get', 'name'],
+            'text-font': [
+                'Open Sans Semibold',
+                'Arial Unicode MS Bold'
+            ],
+            'text-offset': [0, .5],
+            'text-anchor': 'top'       
+        },
+    })
+    // Add a circle layer for points, colored based on total seasonal snowfall
+    map.addLayer({
+        'id': 'station-points',
+        'type': 'circle',
+        'source': 'NWS-stations',
+        'paint': {
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 1,
+            "circle-color": [
+                'interpolate',
+                ['linear'],
+                ['get', 'total_snowfall'],
+                0,
+                ['to-color', '#f5e5f3', '#ffffff'],
+                MAXVAL,
+                ['to-color', '#8d00ac', '#ffffff']
+            ]
+        }
+    })
+
+    /*
+    // Add a circle layer for points
+    map.addLayer({
+        'id': 'station-points',
+        'type': 'circle',
+        'source': 'NWS-stations',
+        'paint': {
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 1,
+            "circle-color": "#fc0303"
+        }
+    })*/
+})
+
+//adding some relief and hillshade
+map.on('style.load', () => {
+    map.addSource('mapbox-dem', {
+    'type': 'raster-dem',
+    'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+    'tileSize': 512,
+    'maxzoom': 14
+    });
+    // add the DEM source as a terrain layer with exaggerated height
+    map.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 3.5 });
+});
+map.on('load', () => {
+        map.addSource('dem', {
+            'type': 'raster-dem',
+            'url': 'mapbox://mapbox.mapbox-terrain-dem-v1'
+        });
+        map.addLayer({
+            'id': 'hillshading',
+            'source': 'dem',
+            'type': 'hillshade'
+        },
+        // Insert below land-structure-polygon layer,
+        // where hillshading sits in the Mapbox Streets style.
+        'land-structure-polygon'
+        );
+});
+
+
+document.addEventListener('DOMContentLoaded',getData)
+
