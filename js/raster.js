@@ -60,6 +60,16 @@ async function getRaster(){
           ))
       }))
 
+    //check to see if any polygons have fewer than 4 points
+    geojsonData.forEach((multi_polygon) => {
+    multi_polygon.coordinates.forEach((coordinate_set) => {
+        coordinate_set.forEach((coordinate_subset) => {
+            if (coordinate_subset.length < 4) {
+                console.log(coordinate_subset)
+            }});
+        });
+    })
+
     //check to see if any latitude values are out of bounds
     geojsonData.forEach((multi_polygon) => {
     multi_polygon.coordinates.forEach((coordinate_set) => {
@@ -87,14 +97,36 @@ async function getRaster(){
                 idx: 0
             },
             geometry: {
-                type: 'Polygon',
+                type: 'MultiPolygon',
                 coordinates: multiPolygon.coordinates
             }
         });
     });
-
-    console.log(resultgeojson)
     //saveToFile(resultgeojson, 'test')
+
+
+        // Add GeoJSON source
+        map.addSource("snowgrid", {
+            type: "geojson",
+            data: resultgeojson
+        });
+        map.addLayer({
+            'id': 'snowfall',
+            'type': 'fill',
+            'source': 'snowgrid',
+            'paint': {
+                "fill-color": [
+                    'interpolate',
+                    ['linear'],
+                    ['get', 'value'],
+                    0,
+                    ['to-color', '#f5e5f3', '#ffffff'],
+                    24,
+                    ['to-color', '#8d00ac', '#ffffff']
+                ]
+            }
+        })
+    
 };
 
 //function to export a geojson file for testing
@@ -104,6 +136,8 @@ function saveToFile(content, filename) {
       type: "text/plain;charset=utf-8"
     }), file);
   }
+
+
 
 // ACIS data //
 
@@ -177,7 +211,7 @@ map.on('load',  () => {
                 ['to-color', '#8d00ac', '#ffffff']
             ]
         }
-    })
+    });    
 })
 
 //adding some relief and hillshade
