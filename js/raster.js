@@ -23,46 +23,87 @@ const map = new mapboxgl.Map({
 
 //Snowgrid data //
 
-//D3-countour method to create contour polygons from snowgrid
-
+//use geoTIFF library to load raster image
 async function getRaster(){
-    let tiff = await GeoTIFF.fromUrl("./data/snowgrid.tif")
-    const image = await tiff.getImage(); // by default, the first image is read.
-    const data = await image.readRasters();
-    const [red, green, blue] = await image.readRasters();
+    let tiff = await GeoTIFF.fromUrl("./data/snowgrid.tif"),
+        image = await tiff.getImage(),
+        //get height and width to convert image pixels to coordiates
+        h = image.getHeight(),
+        w = image.getWidth(),
+        //get values to create contours
+        values = await image.readRasters({interleave: true});
 
-    createContours(data)
-};
+    //get bounding box to convert image pixels to coordinates
+    let bb = image.getBoundingBox(),
+        maxLng = bb[2],
+        minLng = bb[0],
+        maxLat = bb[3],
+        minLat = bb[1];
 
-function createContours(snowgrid){
-    let w = 1100;
-    let h = 900;
-    let polygons = contours()
+    //D3-contour method to create contour polygons from snowgrid
+    let tiffData = contours()
         .size([w, h])
-        //.thresholds(smoothValues)
-        (snowgrid);
+        .smooth(false)
+        //thresholds nicked from NOAA map scale
+        .thresholds([0,.1,1,2,6,12,24,36,48,72,96,120,180,240,360,480,600])
+        (values)
 
+    //loop through tiffData arrays to convert pixels to coordinates
+    let geojsonData = tiffData.map((multi_polygon) => ({
+        ...multi_polygon,
+        coordinates: multi_polygon.coordinates.map((coordinate_set) =>
+          coordinate_set.map((coordinate_subset) =>
+            coordinate_subset.map((coordinate_pair) => {return[
+                minLng + (maxLng - minLng) * (coordinate_pair[0] / w),
+                maxLat - (maxLat - minLat) * (coordinate_pair[1] / h),
+            ]})
+          ))
+      }))
+
+    //check to see if any latitude values are out of bounds
+    geojsonData.forEach((multi_polygon) => {
+    multi_polygon.coordinates.forEach((coordinate_set) => {
+        coordinate_set.forEach((coordinate_subset) => {
+        coordinate_subset.forEach((coordinate_pair) => {
+            if (coordinate_pair[1] < -90) {
+                console.log(coordinate_pair)
+            } else if (coordinate_pair[1] > 90) {
+                console.log(coordinate_pair)
+            }});
+        });
+    });
+    })
+
+    //create a geojson feature to push the data into
     let resultgeojson = {
         type: 'FeatureCollection',
         features: []
     };
-    polygons.forEach((polygon) => {
-        //...
+    geojsonData.forEach((multiPolygon) => {
         resultgeojson.features.push({
             type: 'Feature',
             properties: {
-                value: polygon.value,
+                value: multiPolygon.value,
                 idx: 0
             },
             geometry: {
                 type: 'Polygon',
-                coordinates: polygon.coordinates
+                coordinates: multiPolygon.coordinates
             }
         });
     });
 
-console.log(resultgeojson)
-}
+    console.log(resultgeojson)
+    //saveToFile(resultgeojson, 'test')
+};
+
+//function to export a geojson file for testing
+function saveToFile(content, filename) {
+    var file = filename + '.geojson';
+    saveAs(new File([JSON.stringify(content)], file, {
+      type: "text/plain;charset=utf-8"
+    }), file);
+  }
 
 // ACIS data //
 
