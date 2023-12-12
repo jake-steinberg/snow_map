@@ -43,9 +43,8 @@ async function getRaster(){
     //D3-contour method to create contour polygons from snowgrid
     let tiffData = contours()
         .size([w, h])
-        .smooth(false)
-        //thresholds nicked from NOAA map scale
-        .thresholds([0,.1,1,2,6,12,24,36,48,72,96,120,180,240,360,480,600])
+        .smooth(true)
+        .thresholds(d3.range(200))
         (values)
 
     //loop through tiffData arrays to convert pixels to coordinates
